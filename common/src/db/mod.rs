@@ -381,4 +381,25 @@ impl Database {
             .collect();
         Ok(res)
     }
+    
+        pub async fn get_file_by_func(&self, func: &String) -> Result<Vec<(String, String)>, tokio_postgres::Error> {
+        let stmt = self.prepare_cached(r#"
+        SELECT DISTINCT d.file_path, f.name FROM dbs d 
+        LEFT JOIN funcs f ON (d.id = f.db_id)
+        WHERE
+            f.name = $1
+        "#).await?;
+        let db = self.conn.read().await;
+        let rows = db.query(&stmt, &[&func]).await?;
+
+        let res = rows
+            .into_iter()
+            .map(|v| {
+                let file_path: String = v.get(0);
+                let func_name: String = v.get(1);
+                (file_path, func_name)
+            })
+            .collect();
+        Ok(res)
+    }
 }
