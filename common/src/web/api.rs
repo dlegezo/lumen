@@ -52,6 +52,11 @@ pub fn api_root(state: SharedState) -> impl Filter<Extract = (impl Reply + 'stat
         .and(super::with_state(state.clone()))
         .and(warp::filters::path::param::<Md5>())
         .and_then(view_func_by_hash);
+    let view_origin = warp::get()
+        .and(warp::path("origin"))
+        .and(super::with_state(state.clone()))
+        .and(warp::filters::path::param::<String>())
+        .and_then(view_file_by_func);
     let view_status = warp::get()
         .and(warp::path("status"))
         .and(super::with_state(state))
@@ -59,6 +64,7 @@ pub fn api_root(state: SharedState) -> impl Filter<Extract = (impl Reply + 'stat
 
     view_file
         .or(view_func)
+        .or(view_origin)
         .or(view_status)
 }
 
@@ -226,4 +232,30 @@ async fn view_status(state: SharedState) -> Result<impl Reply, Rejection> {
         db_online: state.db.is_online().await,
         stats,
     }))
+}
+
+async fn view_file_by_func(state: SharedState, func_name: String) -> Result<impl Reply, Rejection> {
+    #[derive(Serialize)]
+    struct FileFunc {
+        func: String,
+        file: String,
+    }
+
+    let v = match state.db.get_file_by_func(&func_name).await {
+        Ok(v) => v,
+        Err(err) => {
+            error!("failed to get file by func name {}", func_name);
+            return Ok(warp::reply::json(&Error{error: "internal server error"}));
+        },
+    };
+    let v: Vec<_> = v.into_iter()
+        .map(|v| {
+            FileFunc {
+                func: v.1,
+                file: v.0,
+            }
+        })
+        .collect();
+
+    Result::<_, Rejection>::Ok(warp::reply::json(&v))
 }
